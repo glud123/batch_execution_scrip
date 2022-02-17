@@ -12,7 +12,7 @@ fn main() {
 
     visit_dirs(Path::new(dir_path), &mut path_list).unwrap();
     for path in path_list {
-        println!("{:?}", path);
+        println!("{:?}", path.parent());
         find_script(scripts.to_vec(), path);
     }
 }
@@ -36,11 +36,11 @@ fn visit_dirs(dir: &Path, list: &mut Vec<path::PathBuf>) -> io::Result<()> {
     Ok(())
 }
 
-fn execute_script(command: &String) {
+fn execute_script(pre_command: &String, command: &String) {
     if cfg!(target_os = "windows") {
         let script = Command::new("cmd")
             .arg("/c")
-            .arg(command)
+            .arg(String::from(pre_command) + command)
             .spawn()
             .expect("cmd exec error!")
             .wait_with_output()
@@ -49,9 +49,10 @@ fn execute_script(command: &String) {
             println!("🎉 The script was executed successfully!");
         }
     } else {
+        println!("{:?}", command);
         let script = Command::new("sh")
             .arg("-c")
-            .arg(command)
+            .arg(String::from(pre_command) + command)
             .spawn()
             .expect("sh exec error!")
             .wait_with_output()
@@ -65,7 +66,7 @@ fn execute_script(command: &String) {
 fn find_script(scripts: Vec<String>, path: path::PathBuf) {
     let expensive_closure = |scripts: Vec<String>, path: path::PathBuf| {
         let handler = thread::spawn(move || {
-            let json_file = fs::File::open(path);
+            let json_file = fs::File::open(&path);
             let json_file = match json_file {
                 Ok(file) => file,
                 Err(e) => return Err(e),
@@ -80,8 +81,17 @@ fn find_script(scripts: Vec<String>, path: path::PathBuf) {
                             if x.contains_key(&script) {
                                 match &x[&script] {
                                     Value::String(command) => {
-                                        println!("{:?}", command);
-                                        execute_script(command);
+                                        match path.parent() {
+                                            Some(parent_path) => {
+                                                let pre_command = String::from("cd ")
+                                                    + parent_path.to_str().unwrap()
+                                                    + "; ";
+                                                execute_script(&pre_command, &command);
+                                            }
+                                            None => {
+                                                println!("🚫 The script was not executed!");
+                                            }
+                                        };
                                     }
                                     _ => (),
                                 }
